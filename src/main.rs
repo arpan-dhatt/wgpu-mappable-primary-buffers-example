@@ -44,7 +44,7 @@ async fn execute_gpu(numbers: &[u32]) -> Option<Vec<u32>> {
         .request_device(
             &wgpu::DeviceDescriptor {
                 label: None,
-                features: wgpu::Features::empty(),
+                features: wgpu::Features::MAPPABLE_PRIMARY_BUFFERS,
                 limits: wgpu::Limits::downlevel_defaults(),
             },
             None,
@@ -80,12 +80,12 @@ async fn execute_gpu_inner(
     // `usage` of buffer specifies how it can be used:
     //   `BufferUsages::MAP_READ` allows it to be read (outside the shader).
     //   `BufferUsages::COPY_DST` allows it to be the destination of the copy.
-    let staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-        label: None,
-        size,
-        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-        mapped_at_creation: false,
-    });
+    // let staging_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+    //     label: None,
+    //     size,
+    //     usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+    //     mapped_at_creation: false,
+    // });
 
     // Instantiates buffer with data (`numbers`).
     // Usage allowing the buffer to be:
@@ -97,8 +97,11 @@ async fn execute_gpu_inner(
         contents: bytemuck::cast_slice(numbers),
         usage: wgpu::BufferUsages::STORAGE
             | wgpu::BufferUsages::COPY_DST
-            | wgpu::BufferUsages::COPY_SRC,
+            | wgpu::BufferUsages::COPY_SRC
+            | wgpu::BufferUsages::MAP_READ
     });
+
+    println!("Storage Buffer Initialized with {:?}: ", &numbers);
 
     // A bind group defines how buffers are accessed by shaders.
     // It is to WebGPU what a descriptor set is to Vulkan.
@@ -125,6 +128,8 @@ async fn execute_gpu_inner(
         }],
     });
 
+    println!("Storage Buffer Before Compute Dispatch has Run: {:?}", read_buffer_data(device, &storage_buffer).await.unwrap());
+
     // A command encoder executes one or many pipelines.
     // It is to WebGPU what a command buffer is to Vulkan.
     let mut encoder =
@@ -138,13 +143,20 @@ async fn execute_gpu_inner(
     }
     // Sets adds copy operation to command encoder.
     // Will copy data from storage buffer on GPU to staging buffer on CPU.
-    encoder.copy_buffer_to_buffer(&storage_buffer, 0, &staging_buffer, 0, size);
+    // encoder.copy_buffer_to_buffer(&storage_buffer, 0, &staging_buffer, 0, size);
+
 
     // Submits command encoder for processing
     queue.submit(Some(encoder.finish()));
 
+    println!("Storage Buffer After Compute Dispath has Completed: {:?}", read_buffer_data(device, &storage_buffer).await.unwrap());
+
+    read_buffer_data(device, &storage_buffer).await
+}
+
+async fn read_buffer_data(device: &wgpu::Device, storage_buffer: &wgpu::Buffer) -> Option<Vec<u32>> {
     // Note that we're not calling `.await` here.
-    let buffer_slice = staging_buffer.slice(..);
+    let buffer_slice = storage_buffer.slice(..);
     // Gets the future representing when `staging_buffer` can be read from
     let buffer_future = buffer_slice.map_async(wgpu::MapMode::Read);
 
@@ -163,7 +175,7 @@ async fn execute_gpu_inner(
         // With the current interface, we have to make sure all mapped views are
         // dropped before we unmap the buffer.
         drop(data);
-        staging_buffer.unmap(); // Unmaps buffer from memory
+        storage_buffer.unmap(); // Unmaps buffer from memory
                                 // If you are familiar with C++ these 2 lines can be thought of similarly to:
                                 //   delete myPointer;
                                 //   myPointer = NULL;
@@ -174,6 +186,7 @@ async fn execute_gpu_inner(
     } else {
         panic!("failed to run compute on gpu!")
     }
+
 }
 
 fn main() {
