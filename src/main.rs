@@ -102,6 +102,8 @@ async fn execute_gpu_inner(
     });
 
     println!("Storage Buffer Initialized with {:?}: ", &numbers);
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+    queue.submit([encoder.finish()]);
 
     // A bind group defines how buffers are accessed by shaders.
     // It is to WebGPU what a descriptor set is to Vulkan.
