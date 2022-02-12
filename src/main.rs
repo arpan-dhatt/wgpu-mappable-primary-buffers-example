@@ -1,6 +1,9 @@
 use std::{borrow::Cow, str::FromStr};
 use wgpu::util::DeviceExt;
 
+// Indicates a u32 overflow in an intermediate Collatz value
+const OVERFLOW: u32 = 0xffffffff;
+
 async fn run() {
     let numbers = if std::env::args().len() <= 1 {
         let default = vec![1, 2, 3, 4];
@@ -177,4 +180,3 @@ fn main() {
     env_logger::init();
     pollster::block_on(run());
 }
-
